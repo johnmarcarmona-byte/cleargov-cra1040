@@ -245,5 +245,112 @@ with tab_auditoria:
         (df_filtrado["estado_cumplimiento_tarifario"] != "CUMPLIMIENTO ÓPTIMO")
     ][["periodo_mes", "estrato", "tarifa_regulatoria_calculada", "tarifa_cobrada_actual", "desviacion_porcentual", "estado_cumplimiento_tarifario", "auditoria_calidad_sui"]]
 
-    if len(df_alertas) > 0:
+if len(df_alertas) > 0:
         st.dataframe(df_alertas, use_container_width=True)
+    else:
+        st.success("✅ No se detectaron anomalías regulatorias ni sobrecobros para esta empresa.")
+
+# ==============================================================================
+# PESTAÑA 3: SIMULADOR TARIFARIO INTERACTIVO (CON IMPACTO EN GRÁFICO)
+# ==============================================================================
+with tab_simulador:
+    st.markdown("### 🎛️ Simulador de Proyección Tarifaria antes de Aplicación")
+    st.markdown("Ajusta las variables operativas y macroeconómicas para proyectar el impacto en la tarifa final por estrato.")
+
+    sc1, sc2, sc3 = st.columns(3)
+    var_ipc = sc1.slider("Proyección Incremento IPC / Costos (%)", -5.0, 20.0, 5.5, 0.5)
+    var_disposicion = sc2.slider("Variación Costo Disposición Final - CDF (%)", -10.0, 30.0, 0.0, 1.0)
+    var_barrido = sc3.slider("Variación Costo Barrido y Limpieza - CBL (%)", -10.0, 30.0, 0.0, 1.0)
+
+    df_sim = df_filtrado[df_filtrado["periodo_mes"] == df_filtrado["periodo_mes"].max()].copy()
+    df_sim["nuevo_ccs"] = df_sim["costo_comercializacion_ccs"] * (1 + var_ipc / 100)
+    df_sim["nuevo_crt"] = df_sim["costo_recoleccion_transporte_crt"] * (1 + var_ipc / 100)
+    df_sim["nuevo_cdf"] = df_sim["costo_disposicion_final_cdf"] * (1 + (var_ipc + var_disposicion) / 100)
+    df_sim["nuevo_cbl"] = df_sim["costo_barrido_cbl"] * (1 + (var_ipc + var_barrido) / 100)
+
+    df_sim["costo_ref_proyectado"] = df_sim["nuevo_ccs"] + df_sim["nuevo_crt"] + df_sim["nuevo_cdf"] + df_sim["nuevo_cbl"]
+    df_sim["tarifa_proyectada"] = (df_sim["costo_ref_proyectado"] * (1 + df_sim["factor_subsidio_contribucion"])).round(2)
+    df_sim["variacion_pesos"] = (df_sim["tarifa_proyectada"] - df_sim["tarifa_regulatoria_calculada"]).round(2)
+    df_sim["variacion_pct"] = ((df_sim["variacion_pesos"] / df_sim["tarifa_regulatoria_calculada"]) * 100).round(2)
+
+    impacto_pct_prom = df_sim["variacion_pct"].mean()
+    impacto_cop_prom = df_sim["variacion_pesos"].mean()
+    recaudo_actual = (df_sim["tarifa_regulatoria_calculada"] * df_sim["suscriptores_totales"]).sum()
+    recaudo_proy = (df_sim["tarifa_proyectada"] * df_sim["suscriptores_totales"]).sum()
+    delta_recaudo = recaudo_proy - recaudo_actual
+
+    ic1, ic2, ic3 = st.columns(3)
+    ic1.metric(
+        "Impacto Porcentual Promedio en Tarifa",
+        f"{impacto_pct_prom:+.2f}%",
+        delta=f"{impacto_pct_prom:+.2f}% vs. tarifa base",
+        delta_color="inverse" if impacto_pct_prom > 0 else "normal"
+    )
+    ic2.metric(
+        "Variación Promedio por Suscriptor",
+        f"${impacto_cop_prom:+,.0f} COP / mes",
+        delta=f"{impacto_pct_prom:+.2f}%",
+        delta_color="inverse" if impacto_cop_prom > 0 else "normal"
+    )
+    ic3.metric(
+        "Impacto en Recaudo Mensual Total",
+        f"${recaudo_proy:,.0f} COP",
+        delta=f"${delta_recaudo:+,.0f} COP ({impacto_pct_prom:+.2f}%)",
+        delta_color="normal"
+    )
+
+    etiquetas_base = [f"${v:,.0f}" for v in df_sim["tarifa_regulatoria_calculada"]]
+    etiquetas_proy = [
+        f"${v:,.0f}<br>({p:+.1f}%)"
+        for v, p in zip(df_sim["tarifa_proyectada"], df_sim["variacion_pct"])
+    ]
+
+    fig_sim = go.Figure()
+    fig_sim.add_trace(go.Bar(
+        x=df_sim["estrato"],
+        y=df_sim["tarifa_regulatoria_calculada"],
+        name="Tarifa Base Actual",
+        marker_color="#85929E",
+        text=etiquetas_base,
+        textposition="outside"
+    ))
+    fig_sim.add_trace(go.Bar(
+        x=df_sim["estrato"],
+        y=df_sim["tarifa_proyectada"],
+        name="Tarifa Simulada Proyectada",
+        marker_color="#8E44AD",
+        text=etiquetas_proy,
+        textposition="outside"
+    ))
+    max_y = max(df_sim["tarifa_proyectada"].max(), df_sim["tarifa_regulatoria_calculada"].max()) * 1.22
+    fig_sim.update_layout(
+        barmode="group",
+        title=f"Impacto de la Simulación por Estrato ($ COP y % de variación: {impacto_pct_prom:+.2f}%)",
+        yaxis=dict(range=[0, max_y], title="Tarifa Mensual ($ COP)"),
+        xaxis_title="Estrato / Uso",
+        height=440
+    )
+    st.plotly_chart(fig_sim, use_container_width=True)
+
+    st.dataframe(
+        df_sim[["estrato", "factor_subsidio_contribucion", "tarifa_regulatoria_calculada", "tarifa_proyectada", "variacion_pesos", "variacion_pct"]],
+        use_container_width=True
+    )
+
+# ==============================================================================
+# PESTAÑA 4: TRAZABILIDAD ARQUITECTURA MEDALLION
+# ==============================================================================
+with tab_medallion:
+    st.markdown("### 🏗️ Auditoría del Pipeline ETL (Arquitectura Medallion)")
+    st.info("Visualización de las tres capas de transformación de datos implementadas bajo el marco CRISP-DM.")
+
+    m1, m2, m3 = st.tabs(["🥉 Capa Bronze (Crudo)", "🥈 Capa Silver (Limpio y Auditado)", "🥇 Capa Gold (Analítico)"])
+    with m1:
+        st.write("Datos originales ingeridos con metadatos de trazabilidad:")
+        st.dataframe(df_bronze.head(15), use_container_width=True)
+    with m2:
+        st.write("Datos estandarizados con reglas de validación SUI y tratamiento de valores nulos/negativos:")
+        st.dataframe(df_silver.head(15), use_container_width=True)
+    with m3:
+        st.write("Tabla analítica final con cálculo de tarifas CRA 1040, desviaciones y KPIs:")
+        st.dataframe(df_gold.head(15), use_container_width=True)        
