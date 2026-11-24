@@ -1,4 +1,5 @@
-﻿# Fase 4: Modelado Matemático y Regulatorio (Capa Gold)
+﻿@'
+# Fase 4: Modelado Matemático y Regulatorio (Capa Gold)
 
 ## 1. Modelo Determinístico de Costo de Referencia (Resolución CRA 1040)
 El **Costo de Referencia ($CR$)** por suscriptor al mes se modela mediante la agregación lineal de los cuatro componentes operativos regulados:
@@ -21,21 +22,15 @@ $$T^{\text{reg}}_{i,t} = CR_{i,t} \cdot (1 + f_i)$$
 * Si $f_i > 0$ (Estratos 5, 6 y Comercial): El usuario realiza un aporte solidario.
 
 ## 3. Modelo de Detección de Anomalías y Clasificación de Riesgo Tarifario
-Para auditar la tarifa efectivamente facturada ($T^{\text{cob}}_{i,t}$), se calcula la desviación porcentual relativa ($\Delta\%_{i,t}$):
+Para auditar la tarifa efectivamente facturada ($T^{\text{cob}}_{i,t}$), se calcula la desviación porcentual relativa ($D_{i,t}$):
 
-$$\Delta\%_{i,t} = \left( \frac{T^{\text{cob}}_{i,t} - T^{\text{reg}}_{i,t}}{T^{\text{reg}}_{i,t}} \right) \times 100$$
+$$D_{i,t} = \left( \frac{T^{\text{cob}}_{i,t} - T^{\text{reg}}_{i,t}}{T^{\text{reg}}_{i,t}} \right) \times 100$$
 
 El clasificador basado en reglas asigna el estado de cumplimiento $C_{i,t}$:
 
-$$C_{i,t} = \begin{cases} \text{ALTO RIESGO (Sobrecobro > 3\%)} & \text{si } \Delta\%_{i,t} > 3.0 \\ \text{RIESGO FINANCIERO (Subcobro > 3\%)} & \text{si } \Delta\%_{i,t} < -3.0 \\ \text{CUMPLIMIENTO ÓPTIMO} & \text{si } -3.0 \le \Delta\%_{i,t} \le 3.0 \end{cases}$$
-
-## 4. Modelo de Simulación de Sensibilidad Tarifaria
-Para evaluar escenarios prospectivos ante indexación por IPC ($\alpha_{\text{IPC}}$) y choques operativos en disposición final ($\alpha_{\text{CDF}}$) o barrido ($\alpha_{\text{CBL}}$):
-
-$$CR^{\text{proy}}_{i} = (CCS_i + CRT_i)(1 + \alpha_{\text{IPC}}) + CDF_i(1 + \alpha_{\text{IPC}} + \alpha_{\text{CDF}}) + CBL_i(1 + \alpha_{\text{IPC}} + \alpha_{\text{CBL}})$$
-
-$$T^{\text{proy}}_{i} = CR^{\text{proy}}_{i} \cdot (1 + f_i)$$
-
-## 5. Indicadores de Sostenibilidad y Recaudo (KPIs Capa Gold)
-* **Tasa de Aprovechamiento:** $\text{TA}_{i,t} = \frac{\text{Ton}_{\text{aprov}}}{\text{Ton}_{\text{aprov}} + \text{Ton}_{\text{no\_aprov}}} \times 100$
-* **Recaudo Mensual Estimado:** $R_{i,t} = T^{\text{cob}}_{i,t} \cdot \text{Suscriptores}_{i,t}$
+```math
+C_{i,t} = \begin{cases}
+\text{ALTO RIESGO (Sobrecobro mayor a 3\%)} & \text{si } D_{i,t} > 3.0 \\
+\text{RIESGO FINANCIERO (Subcobro mayor a 3\%)} & \text{si } D_{i,t} < -3.0 \\
+\text{CUMPLIMIENTO ÓPTIMO} & \text{si } -3.0 \le D_{i,t} \le 3.0
+\end{cases}
