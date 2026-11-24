@@ -1,4 +1,4 @@
-import streamlit as st
+﻿import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.express as px
@@ -10,33 +10,28 @@ from src.etl_bronze import procesar_bronze, COLUMNAS_REQUERIDAS
 from src.etl_silver import procesar_silver
 from src.etl_gold import procesar_gold
 
-# Configuración de página
 st.set_page_config(
     page_title="ClearGov | Inteligencia Tarifaria CRA 1040",
     page_icon="🌿",
     layout="wide"
 )
 
-# Encabezado principal
 st.title("🌿 ClearGov — Plataforma de Cumplimiento y Transparencia Tarifaria (CRA 1040)")
 st.markdown(
     "Transforma datos operativos de empresas de aseo en **visores de datos abiertos**, "
     "**auditorías regulatorias** y **simulaciones tarifarias** bajo arquitectura Medallion."
 )
 
-# Inicializar estado de sesión para controlar el procesamiento del archivo
 if "datos_procesados" not in st.session_state:
     st.session_state["datos_procesados"] = False
     st.session_state["nombre_archivo_activo"] = "reporte_operador_ejemplo.csv"
     st.session_state["ruta_activa"] = "data/01_bronze/reporte_operador_ejemplo.csv"
 
-# Barra lateral: Carga de datos (Ingesta Bronze)
 st.sidebar.header("📂 1. Ingesta de Datos (Capa Bronze)")
 st.sidebar.markdown("Sube el reporte CSV de la empresa de aseo y presiona **Procesar Datos**.")
 
 archivo_subido = st.sidebar.file_uploader("Cargar archivo CSV de operador", type=["csv"])
 
-# Botón explícito para ejecutar la prueba / pipeline ETL
 if archivo_subido is not None:
     if st.sidebar.button("🚀 Procesar Datos (Ejecutar ETL)", type="primary", use_container_width=True):
         ruta_temp = "data/01_bronze/upload_usuario.csv"
@@ -44,7 +39,6 @@ if archivo_subido is not None:
         with open(ruta_temp, "wb") as f:
             f.write(archivo_subido.getbuffer())
         
-        # Animación de ejecución del pipeline Medallion para la demo en vivo
         barra = st.sidebar.progress(0, text="Iniciando ingesta Capa Bronze...")
         time.sleep(0.35)
         barra.progress(35, text="🥉 Capa Bronze: Validando esquema CRA 1040...")
@@ -69,7 +63,6 @@ else:
     st.session_state["datos_procesados"] = False
     st.sidebar.info("ℹ️ Mostrando dataset de demostración precargado.")
 
-# Botón para descargar plantilla CSV de ejemplo
 if os.path.exists("data/01_bronze/reporte_operador_ejemplo.csv"):
     with open("data/01_bronze/reporte_operador_ejemplo.csv", "rb") as f:
         st.sidebar.download_button(
@@ -80,7 +73,6 @@ if os.path.exists("data/01_bronze/reporte_operador_ejemplo.csv"):
             use_container_width=True
         )
 
-# Ejecución del Pipeline Medallion sobre la ruta activa
 try:
     df_bronze = procesar_bronze(st.session_state["ruta_activa"], st.session_state["nombre_archivo_activo"])
     df_silver = procesar_silver(df_bronze)
@@ -90,7 +82,6 @@ except Exception as e:
     st.info(f"Asegúrate de que el CSV contenga las columnas requeridas: {', '.join(COLUMNAS_REQUERIDAS)}")
     st.stop()
 
-# Filtro global por empresa y municipio
 st.sidebar.header("🏢 2. Filtros de Consulta")
 empresas_disponibles = df_gold["nombre_empresa"].unique().tolist()
 empresa_sel = st.sidebar.selectbox("Seleccionar Empresa Prestadora:", empresas_disponibles)
@@ -101,7 +92,6 @@ departamento_actual = df_filtrado["departamento"].iloc[0]
 
 st.subheader(f"Operador: {empresa_sel} | 📍 {municipio_actual}, {departamento_actual}")
 
-# PESTAÑAS REORDENADAS: Visor de Datos Abiertos primero
 tab_ciudadano, tab_auditoria, tab_simulador, tab_medallion = st.tabs([
     "🌐 Visor de Datos Abiertos (B2G / Ciudadanía)",
     "🛡️ Auditoría CRA 1040 (Operador B2B)",
@@ -109,9 +99,6 @@ tab_ciudadano, tab_auditoria, tab_simulador, tab_medallion = st.tabs([
     "🏗️ Arquitectura Medallion (ETL)"
 ])
 
-# ==============================================================================
-# PESTAÑA 1 (AHORA PRIMERA): VISOR DE DATOS ABIERTOS (B2G Y CIUDADANÍA)
-# ==============================================================================
 with tab_ciudadano:
     st.markdown("### 🌐 Portal de Transparencia y Datos Abiertos para Ciudadanos y Entes de Control")
     st.markdown("Traducimos los reportes técnicos de la **Resolución CRA 1040** en información clara sobre el servicio de aseo en tu municipio.")
@@ -188,9 +175,6 @@ with tab_ciudadano:
         mime="text/csv"
     )
 
-# ==============================================================================
-# PESTAÑA 2: AUDITORÍA Y PREVENCIÓN DE SANCIONES (B2B)
-# ==============================================================================
 with tab_auditoria:
     col1, col2, col3, col4 = st.columns(4)
     total_reg = len(df_filtrado)
@@ -245,14 +229,11 @@ with tab_auditoria:
         (df_filtrado["estado_cumplimiento_tarifario"] != "CUMPLIMIENTO ÓPTIMO")
     ][["periodo_mes", "estrato", "tarifa_regulatoria_calculada", "tarifa_cobrada_actual", "desviacion_porcentual", "estado_cumplimiento_tarifario", "auditoria_calidad_sui"]]
 
-if len(df_alertas) > 0:
+    if len(df_alertas) > 0:
         st.dataframe(df_alertas, use_container_width=True)
     else:
         st.success("✅ No se detectaron anomalías regulatorias ni sobrecobros para esta empresa.")
 
-# ==============================================================================
-# PESTAÑA 3: SIMULADOR TARIFARIO INTERACTIVO (CON IMPACTO EN GRÁFICO)
-# ==============================================================================
 with tab_simulador:
     st.markdown("### 🎛️ Simulador de Proyección Tarifaria antes de Aplicación")
     st.markdown("Ajusta las variables operativas y macroeconómicas para proyectar el impacto en la tarifa final por estrato.")
@@ -337,9 +318,6 @@ with tab_simulador:
         use_container_width=True
     )
 
-# ==============================================================================
-# PESTAÑA 4: TRAZABILIDAD ARQUITECTURA MEDALLION
-# ==============================================================================
 with tab_medallion:
     st.markdown("### 🏗️ Auditoría del Pipeline ETL (Arquitectura Medallion)")
     st.info("Visualización de las tres capas de transformación de datos implementadas bajo el marco CRISP-DM.")
@@ -353,4 +331,4 @@ with tab_medallion:
         st.dataframe(df_silver.head(15), use_container_width=True)
     with m3:
         st.write("Tabla analítica final con cálculo de tarifas CRA 1040, desviaciones y KPIs:")
-        st.dataframe(df_gold.head(15), use_container_width=True)        
+        st.dataframe(df_gold.head(15), use_container_width=True)
