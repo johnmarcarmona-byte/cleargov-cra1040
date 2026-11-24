@@ -246,4 +246,4 @@ with tab_auditoria:
     ][["periodo_mes", "estrato", "tarifa_regulatoria_calculada", "tarifa_cobrada_actual", "desviacion_porcentual", "estado_cumplimiento_tarifario", "auditoria_calidad_sui"]]
 
     if len(df_alertas) > 0:
-        st.dataframe(df_alertas, use_container
+        st.dataframe(df_alertas, use_container_width=True)
