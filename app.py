@@ -3,8 +3,6 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
-import urllib.parse
-import json
 import os
 import time
 
@@ -12,37 +10,107 @@ from src.etl_bronze import procesar_bronze, COLUMNAS_REQUERIDAS
 from src.etl_silver import procesar_silver
 from src.etl_gold import procesar_gold
 
-# Detectar si la app fue llamada en modo widget embebido (?vista=ciudadano)
-params = st.query_params
-modo_widget = params.get("vista", "") == "ciudadano"
-empresa_param = params.get("empresa", None)
-
 st.set_page_config(
     page_title="ClearGov | Inteligencia Tarifaria CRA 1040",
     page_icon="🌿",
     layout="wide",
-    initial_sidebar_state="collapsed" if modo_widget else "expanded"
+    initial_sidebar_state="expanded"
 )
 
-if modo_widget:
-    st.markdown(
-        """
-        <style>
-            [data-testid="stSidebar"] { display: none !important; }
-            [data-testid="collapsedControl"] { display: none !important; }
-            header[data-testid="stHeader"] { display: none !important; }
-            .block-container { padding-top: 1rem !important; }
-        </style>
-        """,
-        unsafe_allow_html=True
-    )
+# Ocultar la navegación automática de pages/ en la barra lateral de la app principal
+st.markdown(
+    """
+    <style>
+        [data-testid="stSidebarNav"] { display: none !important; }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
 
 if "datos_procesados" not in st.session_state:
     st.session_state["datos_procesados"] = False
     st.session_state["nombre_archivo_activo"] = "reporte_operador_ejemplo.csv"
     st.session_state["ruta_activa"] = "data/01_bronze/reporte_operador_ejemplo.csv"
 
-def renderizar_visor_ciudadano(df_filtrado: pd.DataFrame, empresa_sel: str, municipio_actual: str, es_widget: bool = False):
+st.title("🌿 ClearGov — Plataforma de Cumplimiento y Transparencia Tarifaria (CRA 1040)")
+st.markdown(
+    "Transforma datos operativos de empresas de aseo en **visores de datos abiertos**, "
+    "**auditorías regulatorias** y **simulaciones tarifarias** bajo arquitectura Medallion."
+)
+
+st.sidebar.header("📂 1. Ingesta de Datos (Capa Bronze)")
+st.sidebar.markdown("Sube el reporte CSV de la empresa de aseo y presiona **Procesar Datos**.")
+
+archivo_subido = st.sidebar.file_uploader("Cargar archivo CSV de operador", type=["csv"])
+
+if archivo_subido is not None:
+    if st.sidebar.button("🚀 Procesar Datos (Ejecutar ETL)", type="primary", use_container_width=True):
+        ruta_temp = "data/01_bronze/upload_usuario.csv"
+        os.makedirs("data/01_bronze", exist_ok=True)
+        with open(ruta_temp, "wb") as f:
+            f.write(archivo_subido.getbuffer())
+        
+        barra = st.sidebar.progress(0, text="Iniciando ingesta Capa Bronze...")
+        time.sleep(0.35)
+        barra.progress(35, text="🥉 Capa Bronze: Validando esquema CRA 1040...")
+        time.sleep(0.35)
+        barra.progress(70, text="🥈 Capa Silver: Auditando calidad SUI...")
+        time.sleep(0.35)
+        barra.progress(100, text="🥇 Capa Gold: Calculando tarifas y KPIs...")
+        time.sleep(0.25)
+        barra.empty()
+
+        st.session_state["ruta_activa"] = ruta_temp
+        st.session_state["nombre_archivo_activo"] = archivo_subido.name
+        st.session_state["datos_procesados"] = True
+
+    if st.session_state["datos_procesados"] and st.session_state["nombre_archivo_activo"] == archivo_subido.name:
+        st.sidebar.success(f"✅ Prueba ejecutada con: '{archivo_subido.name}'")
+    else:
+        st.sidebar.warning("⏳ Archivo cargado. Haz clic en 'Procesar Datos' para ejecutar el ETL.")
+else:
+    st.session_state["ruta_activa"] = "data/01_bronze/reporte_operador_ejemplo.csv"
+    st.session_state["nombre_archivo_activo"] = "reporte_operador_ejemplo.csv"
+    st.session_state["datos_procesados"] = False
+    st.sidebar.info("ℹ️ Mostrando dataset de demostración precargado.")
+
+if os.path.exists("data/01_bronze/reporte_operador_ejemplo.csv"):
+    with open("data/01_bronze/reporte_operador_ejemplo.csv", "rb") as f:
+        st.sidebar.download_button(
+            label="📥 Descargar CSV de ejemplo",
+            data=f,
+            file_name="plantilla_operador_cra1040.csv",
+            mime="text/csv",
+            use_container_width=True
+        )
+
+try:
+    df_bronze = procesar_bronze(st.session_state["ruta_activa"], st.session_state["nombre_archivo_activo"])
+    df_silver = procesar_silver(df_bronze)
+    df_gold = procesar_gold(df_silver)
+except Exception as e:
+    st.error(f"❌ Error en el procesamiento del archivo CSV: {e}")
+    st.info(f"Asegúrate de que el CSV contenga las columnas requeridas: {', '.join(COLUMNAS_REQUERIDAS)}")
+    st.stop()
+
+st.sidebar.header("🏢 2. Filtros de Consulta")
+empresas_disponibles = df_gold["nombre_empresa"].unique().tolist()
+empresa_sel = st.sidebar.selectbox("Seleccionar Empresa Prestadora:", empresas_disponibles)
+
+df_filtrado = df_gold[df_gold["nombre_empresa"] == empresa_sel].copy()
+municipio_actual = df_filtrado["municipio"].iloc[0]
+departamento_actual = df_filtrado["departamento"].iloc[0]
+
+st.subheader(f"Operador: {empresa_sel} | 📍 {municipio_actual}, {departamento_actual}")
+
+tab_ciudadano, tab_auditoria, tab_simulador, tab_medallion = st.tabs([
+    "🌐 Visor de Datos Abiertos (B2G / Ciudadanía)",
+    "🛡️ Auditoría CRA 1040 (Operador B2B)",
+    "🎛️ Simulador Tarifario",
+    "🏗️ Arquitectura Medallion (ETL)"
+])
+
+with tab_ciudadano:
     st.markdown("### 🌐 Portal de Transparencia y Datos Abiertos para Ciudadanos y Entes de Control")
     st.markdown("Traducimos los reportes técnicos de la **Resolución CRA 1040** en información clara sobre el servicio de aseo en tu municipio.")
 
@@ -136,133 +204,38 @@ def renderizar_visor_ciudadano(df_filtrado: pd.DataFrame, empresa_sel: str, muni
             use_container_width=True
         )
 
-    if not es_widget:
-        empresa_encoded = urllib.parse.quote(empresa_sel)
-        url_widget = f"https://cleargov-cra1040-8jiowai5bj6mdvjrz5wv5u.streamlit.app/visor_datos_abiertos?embed=true"
-        with st.expander("🔌 Integración Web SaaS para Empresas Clientes (Código Iframe y Payload JSON)"):
-            st.markdown("Si una empresa prestadora adquiere **ClearGov SaaS**, puede incrustar **exclusivamente este visor ciudadano** en su portal web corporativo copiando esta etiqueta HTML o consumiendo el JSON estructurado:")
-            col_emb1, col_emb2 = st.columns(2)
-            with col_emb1:
-                st.markdown("**1. Código HTML Embebible (`<iframe>`) exclusivo del Visor:**")
-                st.code(
-                    f'<iframe src="{url_widget}"\n'
-                    '        width="100%" height="920" frameborder="0"></iframe>',
-                    language="html"
-                )
-            with col_emb2:
-                st.markdown(f"**2. Salida JSON en tiempo real ({estrato_ciudadano}):**")
-                payload_ejemplo = {
-                    "empresa": empresa_sel,
-                    "nit": str(fila_est["id_empresa"]),
-                    "municipio": municipio_actual,
-                    "marco_regulatorio": "Resolución CRA 1040",
-                    "periodo": str(fila_est["periodo_mes"]),
-                    "estrato": estrato_ciudadano,
-                    "componentes_cop": {
-                        "CCS": float(fila_est["costo_comercializacion_ccs"]),
-                        "CBL": float(fila_est["costo_barrido_cbl"]),
-                        "CRT": float(fila_est["costo_recoleccion_transporte_crt"]),
-                        "CDF": float(fila_est["costo_disposicion_final_cdf"]),
-                        "CLUS": float(fila_est["costo_limpieza_urbana_clus"])
-                    },
-                    "costo_referencia_cop": float(fila_est["costo_referencia_cra1040"]),
-                    "factor_ley142": float(fila_est["factor_subsidio_contribucion"]),
-                    "tarifa_final_cop": float(fila_est["tarifa_cobrada_actual"])
-                }
-                st.json(payload_ejemplo)
-
-# ==============================================================================
-# EJECUCIÓN DEL PIPELINE ETL MEDALLION
-# ==============================================================================
-if not modo_widget:
-    st.markdown("<style>[data-testid='stSidebarNav'] { display: none !important; }</style>", unsafe_allow_html=True)`nst.title("🌿 ClearGov — Plataforma de Cumplimiento y Transparencia Tarifaria (CRA 1040)")
-    st.markdown(
-        "Transforma datos operativos de empresas de aseo en **visores de datos abiertos**, "
-        "**auditorías regulatorias** y **simulaciones tarifarias** bajo arquitectura Medallion."
-    )
-
-    st.sidebar.header("📂 1. Ingesta de Datos (Capa Bronze)")
-    st.sidebar.markdown("Sube el reporte CSV de la empresa de aseo y presiona **Procesar Datos**.")
-
-    archivo_subido = st.sidebar.file_uploader("Cargar archivo CSV de operador", type=["csv"])
-
-    if archivo_subido is not None:
-        if st.sidebar.button("🚀 Procesar Datos (Ejecutar ETL)", type="primary", use_container_width=True):
-            ruta_temp = "data/01_bronze/upload_usuario.csv"
-            os.makedirs("data/01_bronze", exist_ok=True)
-            with open(ruta_temp, "wb") as f:
-                f.write(archivo_subido.getbuffer())
-            
-            barra = st.sidebar.progress(0, text="Iniciando ingesta Capa Bronze...")
-            time.sleep(0.35)
-            barra.progress(35, text="🥉 Capa Bronze: Validando esquema CRA 1040...")
-            time.sleep(0.35)
-            barra.progress(70, text="🥈 Capa Silver: Auditando calidad SUI...")
-            time.sleep(0.35)
-            barra.progress(100, text="🥇 Capa Gold: Calculando tarifas y KPIs...")
-            time.sleep(0.25)
-            barra.empty()
-
-            st.session_state["ruta_activa"] = ruta_temp
-            st.session_state["nombre_archivo_activo"] = archivo_subido.name
-            st.session_state["datos_procesados"] = True
-
-        if st.session_state["datos_procesados"] and st.session_state["nombre_archivo_activo"] == archivo_subido.name:
-            st.sidebar.success(f"✅ Prueba ejecutada con: '{archivo_subido.name}'")
-        else:
-            st.sidebar.warning("⏳ Archivo cargado. Haz clic en 'Procesar Datos' para ejecutar el ETL.")
-    else:
-        st.session_state["ruta_activa"] = "data/01_bronze/reporte_operador_ejemplo.csv"
-        st.session_state["nombre_archivo_activo"] = "reporte_operador_ejemplo.csv"
-        st.session_state["datos_procesados"] = False
-        st.sidebar.info("ℹ️ Mostrando dataset de demostración precargado.")
-
-    if os.path.exists("data/01_bronze/reporte_operador_ejemplo.csv"):
-        with open("data/01_bronze/reporte_operador_ejemplo.csv", "rb") as f:
-            st.sidebar.download_button(
-                label="📥 Descargar CSV de ejemplo",
-                data=f,
-                file_name="plantilla_operador_cra1040.csv",
-                mime="text/csv",
-                use_container_width=True
+    url_widget = "https://cleargov-cra1040-8jiowai5bj6mdvjrz5wv5u.streamlit.app/visor_datos_abiertos?embed=true"
+    with st.expander("🔌 Integración Web SaaS para Empresas Clientes (Código Iframe y Payload JSON)"):
+        st.markdown("Si una empresa prestadora adquiere **ClearGov SaaS**, puede incrustar **exclusivamente este visor ciudadano** en su portal web corporativo copiando esta etiqueta HTML o consumiendo el JSON estructurado:")
+        col_emb1, col_emb2 = st.columns(2)
+        with col_emb1:
+            st.markdown("**1. Código HTML Embebible (`<iframe>`) exclusivo del Visor:**")
+            st.code(
+                f'<iframe src="{url_widget}"\n'
+                '        width="100%" height="950" frameborder="0"></iframe>',
+                language="html"
             )
-
-try:
-    df_bronze = procesar_bronze(st.session_state["ruta_activa"], st.session_state["nombre_archivo_activo"])
-    df_silver = procesar_silver(df_bronze)
-    df_gold = procesar_gold(df_silver)
-except Exception as e:
-    st.error(f"❌ Error en el procesamiento del archivo CSV: {e}")
-    st.info(f"Asegúrate de que el CSV contenga las columnas requeridas: {', '.join(COLUMNAS_REQUERIDAS)}")
-    st.stop()
-
-empresas_disponibles = df_gold["nombre_empresa"].unique().tolist()
-
-if modo_widget:
-    empresa_sel = empresa_param if (empresa_param in empresas_disponibles) else empresas_disponibles[0]
-    df_filtrado = df_gold[df_gold["nombre_empresa"] == empresa_sel].copy()
-    municipio_actual = df_filtrado["municipio"].iloc[0]
-    renderizar_visor_ciudadano(df_filtrado, empresa_sel, municipio_actual, es_widget=True)
-    st.stop()
-
-st.sidebar.header("🏢 2. Filtros de Consulta")
-empresa_sel = st.sidebar.selectbox("Seleccionar Empresa Prestadora:", empresas_disponibles)
-
-df_filtrado = df_gold[df_gold["nombre_empresa"] == empresa_sel].copy()
-municipio_actual = df_filtrado["municipio"].iloc[0]
-departamento_actual = df_filtrado["departamento"].iloc[0]
-
-st.subheader(f"Operador: {empresa_sel} | 📍 {municipio_actual}, {departamento_actual}")
-
-tab_ciudadano, tab_auditoria, tab_simulador, tab_medallion = st.tabs([
-    "🌐 Visor de Datos Abiertos (B2G / Ciudadanía)",
-    "🛡️ Auditoría CRA 1040 (Operador B2B)",
-    "🎛️ Simulador Tarifario",
-    "🏗️ Arquitectura Medallion (ETL)"
-])
-
-with tab_ciudadano:
-    renderizar_visor_ciudadano(df_filtrado, empresa_sel, municipio_actual, es_widget=False)
+        with col_emb2:
+            st.markdown(f"**2. Salida JSON en tiempo real ({estrato_ciudadano}):**")
+            payload_ejemplo = {
+                "empresa": empresa_sel,
+                "nit": str(fila_est["id_empresa"]),
+                "municipio": municipio_actual,
+                "marco_regulatorio": "Resolución CRA 1040",
+                "periodo": str(fila_est["periodo_mes"]),
+                "estrato": estrato_ciudadano,
+                "componentes_cop": {
+                    "CCS": float(fila_est["costo_comercializacion_ccs"]),
+                    "CBL": float(fila_est["costo_barrido_cbl"]),
+                    "CRT": float(fila_est["costo_recoleccion_transporte_crt"]),
+                    "CDF": float(fila_est["costo_disposicion_final_cdf"]),
+                    "CLUS": float(fila_est["costo_limpieza_urbana_clus"])
+                },
+                "costo_referencia_cop": float(fila_est["costo_referencia_cra1040"]),
+                "factor_ley142": float(fila_est["factor_subsidio_contribucion"]),
+                "tarifa_final_cop": float(fila_est["tarifa_cobrada_actual"])
+            }
+            st.json(payload_ejemplo)
 
 with tab_auditoria:
     col1, col2, col3, col4 = st.columns(4)
@@ -424,4 +397,3 @@ with tab_medallion:
     with m3:
         st.write("Tabla analítica final con cálculo de tarifas CRA 1040, desviaciones y KPIs:")
         st.dataframe(df_gold.head(15), use_container_width=True)
-
