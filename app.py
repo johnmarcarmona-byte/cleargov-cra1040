@@ -278,7 +278,7 @@ with tab_auditoria:
     df_alertas = df_filtrado[
         (df_filtrado["tiene_alerta_calidad"]) |
         (df_filtrado["estado_cumplimiento_tarifario"] != "CUMPLIMIENTO ÓPTIMO")
-    ][["periodo_mes", "estrato", "tarifa_regulatoria_calculada", "tarifa_cobrada_actual", "desviacion_porcentual", "estado_cumplimiento_tarifario", "auditoria_calidad_sui"]]
+    ][["periodo_mes", "estrato", "tarifa_regulatoria_calculada", "tarifa_cobrada_actual", "desviacion_porcentual", "estado_cumplimiento_tarifario", "diagnostico_y_exposicion_sspd"]]
 
     if len(df_alertas) > 0:
         st.dataframe(df_alertas, use_container_width=True)

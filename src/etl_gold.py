@@ -31,6 +31,30 @@ def procesar_gold(df_silver: pd.DataFrame) -> pd.DataFrame:
             return "CUMPLIMIENTO ÓPTIMO"
             
     df["estado_cumplimiento_tarifario"] = df["desviacion_porcentual"].apply(clasificar_riesgo)
+
+    # Diagnóstico unificado de intervención y exposición sancionatoria (Ley 142 / SUI)
+    def generar_diagnostico_sancion(row):
+        hallazgos = []
+        if row["desviacion_porcentual"] > 3.0:
+            hallazgos.append(
+                f"INTERVENCIÓN URGENTE: Sobrecobro del +{row['desviacion_porcentual']:.2f}% sobre tope CRA 1040. "
+                "Exposición a devolución de cobros y multa SSPD hasta 2.000 SMLMV (Art. 81 Ley 142)."
+            )
+        elif row["desviacion_porcentual"] < -3.0:
+            hallazgos.append(
+                f"REVISIÓN FINANCIERA: Subcobro del {row['desviacion_porcentual']:.2f}% frente a tarifa regulada. "
+                "Riesgo de déficit operativo y glosa en cierre financiero SUI."
+            )
+        
+        if row["tiene_alerta_calidad"]:
+            hallazgos.append(
+                f"CORREGIR ANTES DE CARGUE SUI: {row['auditoria_calidad_sui']}. "
+                "Reportar inconsistencias al SUI acarrea sanción SSPD hasta 2.000 SMLMV (Art. 81 Ley 142)."
+            )
+            
+        return " | ".join(hallazgos) if hallazgos else "Sin hallazgos regulatorios"
+
+    df["diagnostico_y_exposicion_sspd"] = df.apply(generar_diagnostico_sancion, axis=1)
     
     total_ton = df["toneladas_no_aprovechables"] + df["toneladas_aprovechadas"]
     df["tasa_aprovechamiento_pct"] = np.where(
