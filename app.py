@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
+import json
 import os
 import time
 
@@ -114,7 +115,7 @@ with tab_ciudadano:
     fila_est = df_ultimo_ciudadano[df_ultimo_ciudadano["estrato"] == estrato_ciudadano].iloc[0]
 
     fc1, fc2, fc3 = st.columns(3)
-    fc1.metric("Costo Pleno del Servicio", f"${fila_est['costo_referencia_cra1040']:,.0f} COP", help="Lo que cuesta prestar el servicio antes de subsidios o aportes.")
+    fc1.metric("Costo Pleno del Servicio (CR)", f"${fila_est['costo_referencia_cra1040']:,.0f} COP", help="Suma de CCS + CBL + CRT + CDF + CLUS antes de subsidios o aportes.")
     
     factor = fila_est["factor_subsidio_contribucion"]
     etiqueta_factor = f"Subsidio recibido ({abs(factor)*100:.0f}%)" if factor < 0 else (f"Aporte solidario (+{factor*100:.0f}%)" if factor > 0 else "Sin subsidio ni aporte (0%)")
@@ -125,7 +126,7 @@ with tab_ciudadano:
 
     st.info(
         f"💡 **En palabras simples:** Prestar el servicio de aseo para **{estrato_ciudadano}** en **{municipio_actual}** "
-        f"tiene un costo técnico de **${fila_est['costo_referencia_cra1040']:,.0f}**. "
+        f"tiene un costo técnico pleno de **${fila_est['costo_referencia_cra1040']:,.0f}** (incluyendo limpieza urbana CLUS). "
         f"Aplicando el esquema de solidaridad (**{etiqueta_factor}**), tu tarifa mensual es de **${fila_est['tarifa_cobrada_actual']:,.0f} COP**."
     )
     st.markdown("---")
@@ -155,7 +156,8 @@ with tab_ciudadano:
             "costo_comercializacion_ccs": "Facturación y Atención (CCS)",
             "costo_barrido_cbl": "Barrido de Calles (CBL)",
             "costo_recoleccion_transporte_crt": "Recolección y Transporte (CRT)",
-            "costo_disposicion_final_cdf": "Relleno Sanitario (CDF)"
+            "costo_disposicion_final_cdf": "Relleno Sanitario (CDF)",
+            "costo_limpieza_urbana_clus": "Limpieza Urbana / Césped / Árboles (CLUS)"
         }
         df_costos = df_ultimo_ciudadano[list(nombres_amigables.keys())].mean().reset_index()
         df_costos.columns = ["Actividad", "Costo Promedio ($ COP)"]
@@ -163,17 +165,66 @@ with tab_ciudadano:
         
         fig_comp_cost = px.pie(
             df_costos, names="Actividad", values="Costo Promedio ($ COP)", hole=0.4,
-            title="¿En qué se invierte cada peso de tu tarifa?"
+            title="¿En qué se invierte cada peso de tu tarifa? (5 Componentes CRA 1040)"
         )
         st.plotly_chart(fig_comp_cost, use_container_width=True)
 
-    csv_gold = df_filtrado.to_csv(index=False).encode("utf-8")
-    st.download_button(
-        label="📥 Descargar Dataset Abierto Procesado (Capa Gold - CSV)",
-        data=csv_gold,
-        file_name=f"datos_abiertos_{municipio_actual.lower()}.csv",
-        mime="text/csv"
-    )
+    d1, d2 = st.columns(2)
+    with d1:
+        csv_gold = df_filtrado.to_csv(index=False).encode("utf-8")
+        st.download_button(
+            label="📥 Descargar Dataset Abierto Procesado (Capa Gold - CSV)",
+            data=csv_gold,
+            file_name=f"datos_abiertos_{municipio_actual.lower()}.csv",
+            mime="text/csv",
+            use_container_width=True
+        )
+    with d2:
+        json_gold_str = df_ultimo_ciudadano[[
+            "id_empresa", "nombre_empresa", "municipio", "periodo_mes", "estrato",
+            "costo_comercializacion_ccs", "costo_barrido_cbl", "costo_recoleccion_transporte_crt",
+            "costo_disposicion_final_cdf", "costo_limpieza_urbana_clus",
+            "costo_referencia_cra1040", "factor_subsidio_contribucion", "tarifa_cobrada_actual"
+        ]].to_json(orient="records", force_ascii=False, indent=2)
+        st.download_button(
+            label="📦 Descargar Respuesta API / Datos Abiertos (JSON)",
+            data=json_gold_str.encode("utf-8"),
+            file_name=f"api_tarifas_{municipio_actual.lower()}.json",
+            mime="application/json",
+            use_container_width=True
+        )
+
+    with st.expander("🔌 Integración Web SaaS para Empresas Clientes (Código Iframe y Payload JSON)"):
+        st.markdown("Si una empresa prestadora adquiere **ClearGov SaaS**, puede incrustar este visor directamente en su portal web corporativo copiando esta etiqueta HTML o consumiendo el JSON estructurado:")
+        col_emb1, col_emb2 = st.columns(2)
+        with col_emb1:
+            st.markdown("**1. Código HTML Embebible (`<iframe>`) para sitio web:**")
+            st.code(
+                '<iframe src="https://cleargov-cra1040-8jiowai5bj6mdvjrz5wv5u.streamlit.app/?embed=true"\n'
+                '        width="100%" height="780" frameborder="0"></iframe>',
+                language="html"
+            )
+        with col_emb2:
+            st.markdown(f"**2. Salida JSON en tiempo real ({estrato_ciudadano}):**")
+            payload_ejemplo = {
+                "empresa": empresa_sel,
+                "nit": str(fila_est["id_empresa"]),
+                "municipio": municipio_actual,
+                "marco_regulatorio": "Resolución CRA 1040",
+                "periodo": str(fila_est["periodo_mes"]),
+                "estrato": estrato_ciudadano,
+                "componentes_cop": {
+                    "CCS": float(fila_est["costo_comercializacion_ccs"]),
+                    "CBL": float(fila_est["costo_barrido_cbl"]),
+                    "CRT": float(fila_est["costo_recoleccion_transporte_crt"]),
+                    "CDF": float(fila_est["costo_disposicion_final_cdf"]),
+                    "CLUS": float(fila_est["costo_limpieza_urbana_clus"])
+                },
+                "costo_referencia_cop": float(fila_est["costo_referencia_cra1040"]),
+                "factor_ley142": float(fila_est["factor_subsidio_contribucion"]),
+                "tarifa_final_cop": float(fila_est["tarifa_cobrada_actual"])
+            }
+            st.json(payload_ejemplo)
 
 with tab_auditoria:
     col1, col2, col3, col4 = st.columns(4)
@@ -248,8 +299,11 @@ with tab_simulador:
     df_sim["nuevo_crt"] = df_sim["costo_recoleccion_transporte_crt"] * (1 + var_ipc / 100)
     df_sim["nuevo_cdf"] = df_sim["costo_disposicion_final_cdf"] * (1 + (var_ipc + var_disposicion) / 100)
     df_sim["nuevo_cbl"] = df_sim["costo_barrido_cbl"] * (1 + (var_ipc + var_barrido) / 100)
+    df_sim["nuevo_clus"] = df_sim["costo_limpieza_urbana_clus"] * (1 + (var_ipc + var_barrido) / 100)
 
-    df_sim["costo_ref_proyectado"] = df_sim["nuevo_ccs"] + df_sim["nuevo_crt"] + df_sim["nuevo_cdf"] + df_sim["nuevo_cbl"]
+    df_sim["costo_ref_proyectado"] = (
+        df_sim["nuevo_ccs"] + df_sim["nuevo_crt"] + df_sim["nuevo_cdf"] + df_sim["nuevo_cbl"] + df_sim["nuevo_clus"]
+    )
     df_sim["tarifa_proyectada"] = (df_sim["costo_ref_proyectado"] * (1 + df_sim["factor_subsidio_contribucion"])).round(2)
     df_sim["variacion_pesos"] = (df_sim["tarifa_proyectada"] - df_sim["tarifa_regulatoria_calculada"]).round(2)
     df_sim["variacion_pct"] = ((df_sim["variacion_pesos"] / df_sim["tarifa_regulatoria_calculada"]) * 100).round(2)

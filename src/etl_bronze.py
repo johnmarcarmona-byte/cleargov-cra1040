@@ -1,4 +1,4 @@
-import pandas as pd
+﻿import pandas as pd
 from datetime import datetime
 import os
 
@@ -8,28 +8,19 @@ COLUMNAS_REQUERIDAS = [
     "toneladas_no_aprovechables", "toneladas_aprovechadas",
     "km_barrido_limpieza", "costo_comercializacion_ccs",
     "costo_barrido_cbl", "costo_recoleccion_transporte_crt",
-    "costo_disposicion_final_cdf", "factor_subsidio_contribucion",
-    "tarifa_cobrada_actual"
+    "costo_disposicion_final_cdf", "costo_limpieza_urbana_clus",
+    "factor_subsidio_contribucion", "tarifa_cobrada_actual"
 ]
 
-def procesar_bronze(ruta_csv_entrada, nombre_archivo="carga_manual.csv"):
-    df = pd.read_csv(ruta_csv_entrada)
-    
-    # Validar esquema mínimo
+def procesar_bronze(ruta_csv: str, nombre_origen: str = "carga_manual.csv") -> pd.DataFrame:
+    df = pd.read_csv(ruta_csv)
     faltantes = [col for col in COLUMNAS_REQUERIDAS if col not in df.columns]
     if faltantes:
-        raise ValueError(f"El CSV no cumple el formato CRA 1040. Faltan columnas: {faltantes}")
+        raise ValueError(f"El archivo CSV no cumple con el esquema mínimo CRA 1040. Faltan columnas: {faltantes}")
     
-    # Agregar trazabilidad Medallion (Metadatos de ingesta)
-    df_bronze = df.copy()
-    df_bronze["_bronze_fecha_ingesta"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    df_bronze["_bronze_archivo_origen"] = nombre_archivo
+    df["_bronze_fecha_ingesta"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    df["_bronze_archivo_origen"] = nombre_origen
     
     os.makedirs("data/01_bronze", exist_ok=True)
-    ruta_salida = "data/01_bronze/bronze_datos_crudos.csv"
-    df_bronze.to_csv(ruta_salida, index=False, encoding="utf-8")
-    return df_bronze
-
-if __name__ == "__main__":
-    df_b = procesar_bronze("data/01_bronze/reporte_operador_ejemplo.csv", "reporte_operador_ejemplo.csv")
-    print(f"[BRONZE] Ingesta completada: {len(df_b)} registros guardados.")
+    df.to_csv("data/01_bronze/bronze_ingestado.csv", index=False, encoding="utf-8")
+    return df
